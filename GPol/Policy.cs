@@ -1,4 +1,4 @@
-namespace GPol.Serialization;
+namespace GPol;
 
 /// <summary>
 ///     The Policy data.

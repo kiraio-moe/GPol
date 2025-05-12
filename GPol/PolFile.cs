@@ -1,4 +1,4 @@
-namespace GPol.Serialization;
+namespace GPol;
 
 /// <summary>
 ///     The Group Policy Object Editor `Registry.pol` files. Reside under `{drive}:\Windows\System32\GroupPolicy\` folder.

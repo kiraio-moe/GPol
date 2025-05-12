@@ -9,7 +9,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\GPol\GPol.csproj" />
+        <ProjectReference Include="..\GPol\GPol.csproj"/>
     </ItemGroup>
 
 </Project>

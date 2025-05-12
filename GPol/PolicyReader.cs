@@ -1,49 +1,46 @@
-namespace GPol.Serialization;
+using Serilog;
 
-public sealed class PolicyReader : BinaryReader
+namespace GPol;
+
+public sealed class PolicyReader
 {
-    // private readonly Stream _stream;
+    private BinaryReader? _reader;
 
-    public PolicyReader(Stream stream) : base(stream)
+    public PolFile ReadUserPolicies() => ReadPolicies(Path.Combine(GetPolicyFolder("User"), "Registry.pol"));
+    public PolFile ReadMachinePolicies() => ReadPolicies(Path.Combine(GetPolicyFolder("Machine"), "Registry.pol"));
+
+    public PolicyReader()
     {
-        // _stream = stream;
+        Log.Logger = new LoggerConfiguration()
+            .MinimumLevel.Debug()
+            .WriteTo.File("log.txt")
+            .CreateLogger();
     }
 
-    public PolicyReader(string fileName) : base(File.OpenRead(fileName))
+    private PolFile ReadPolicies(string path)
     {
         try
         {
-            // _stream = BaseStream;
-        }
-        catch (IOException e)
-        {
-            Console.WriteLine($"IO Error: {e.Message}");
-            throw;
-        }
-    }
+            if (!File.Exists(path))
+            {
+                Log.Warning("{path} did not exist! No policies being applied to the system.", path);
+                return new PolFile();
+            }
 
-    // protected override void Dispose(bool disposing)
-    // {
-    //     if (disposing)
-    //     {
-    //         _stream?.Dispose();
-    //     }
-    //
-    //     base.Dispose(disposing);
-    // }
+            using var stream = new MemoryStream(File.ReadAllBytes(path));
+            _reader = new BinaryReader(stream);
 
-    public PolFile ReadPolicies()
-    {
-        try
-        {
-            var signature = ReadUInt32();
+            var signature = _reader.ReadUInt32();
             if (signature != 0x67655250)
+            {
+                Log.Error("Invalid file signature. Expected 0x67655250, got {signature}", signature);
                 throw new InvalidDataException("Invalid file! Not a .pol file.");
+            }
 
-            var version = ReadUInt32();
+            var version = _reader.ReadUInt32();
 
             var policies = new List<Policy>();
-            while (BaseStream.Position < BaseStream.Length)
+            while (_reader.BaseStream.Position < _reader.BaseStream.Length)
             {
                 var policyData = new List<ushort>();
                 bool isStart = false, isEnd = false; // Flags to start or end reading the data
@@ -53,9 +50,9 @@ public sealed class PolicyReader : BinaryReader
                 List<ushort> policyPart = [];
                 var partsCount = 0;
 
-                while (BaseStream.Position < BaseStream.Length)
+                while (_reader.BaseStream.Position < _reader.BaseStream.Length)
                 {
-                    var chunk = ReadUInt16();
+                    var chunk = _reader.ReadUInt16();
                     switch (chunk)
                     {
                         case 59: // ';'
@@ -94,13 +91,18 @@ public sealed class PolicyReader : BinaryReader
                         // Convert policyParts[4] to byte[] first, then to int
                         var policyPartAsBytes = policyParts[3].Select(b => (byte)b).ToArray();
                         int userDataSize = BitConverter.ToInt16(policyPartAsBytes);
-                        var userData = ReadBytes(userDataSize).Select(b => (ushort)b).ToArray();
+                        var userData = _reader.ReadBytes(userDataSize).Select(b => (ushort)b).ToArray();
                         policyParts.Add(userData);
                     }
                 }
 
                 if (policyParts.Count != 5)
-                    throw new InvalidDataException("Invalid policy data format. Expected 5 parts.");
+                {
+                    Log.Error(
+                        "Error formatting the .pol file. Expected 5 parts to be formatted, got {policyParts.Count}",
+                        policyParts.Count);
+                    throw new InvalidDataException("Invalid policy data format.");
+                }
 
                 var policy = new Policy
                 {
@@ -123,18 +125,18 @@ public sealed class PolicyReader : BinaryReader
         }
         catch (InvalidDataException e)
         {
-            Console.WriteLine($"Data Error: {e.Message}");
+            Log.Error("Error reading .pol file. {e.Message}", e.Message);
             throw;
         }
         catch (IOException e)
         {
-            Console.WriteLine($"IO Error: {e.Message}");
+            Log.Error("IO error. {e.Message}", e.Message);
             throw;
         }
     }
 
-    // internal Policy[] ReadPolicyRegistries()
-    // {
-    //     return new
-    // }
+    private static string GetPolicyFolder(string userType)
+    {
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "GroupPolicy", userType);
+    }
 }
